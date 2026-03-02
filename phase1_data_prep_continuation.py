@@ -90,6 +90,8 @@ def main():
     '''
     X_train_final = np.hstack([X_train_non_cir, X_train_cir_pca])
     X_test_final = np.hstack([X_test_non_cir, X_test_cir_pca])
+    pca_feature_names = [f"PCA_{i}" for i in range(X_train_cir_pca.shape[1])]
+    final_feature_names = non_cir_cols + pca_feature_names
 
     '''
     Save outputs 
@@ -104,7 +106,7 @@ def main():
     np.save(output_dir / "y_test_reg.npy", y_test_reg.to_numpy())
 
     # if you want to export CSV for easier viewing (optional)
-#    pd.DataFrame(X_train_final).to_csv(output_dir / "X_train.csv", index=False) 
+    pd.DataFrame(X_train_final, columns=final_feature_names).to_csv(output_dir / "X_train.csv", index=False) 
     
     # Save metadata
     metadata = {
@@ -117,6 +119,10 @@ def main():
 
     with open(output_dir / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=4)
+
+    # Save feature names separately
+    with open(output_dir / "feature_names.json", "w") as f:
+        json.dump(final_feature_names, f, indent=4)
 
     print("preprocessing completed.")
 
