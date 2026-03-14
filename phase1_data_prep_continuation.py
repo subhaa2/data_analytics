@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -14,25 +13,22 @@ def extract_second_peak_features(df, cir_cols):
     """Signal processing to find the 2nd dominant path."""
     peak2_pos = []
     peak2_amp = []
-    
-    # Convert CIR to numpy for speed
     cir_matrix = df[cir_cols].values
     fp_indices = df['FP_IDX'].values
     
     for i in range(len(df)):
-        # Start searching AFTER the first path index
         start_idx = int(fp_indices[i])
+        # Look at the signal AFTER the first path
         signal = cir_matrix[i, start_idx:]
-        
         peaks, props = find_peaks(signal, height=0)
         
         if len(peaks) > 0:
-            # Get index of the highest peak in the remaining signal
             highest_peak_idx = np.argmax(props['peak_heights'])
             peak2_pos.append(peaks[highest_peak_idx] + start_idx)
             peak2_amp.append(props['peak_heights'][highest_peak_idx])
         else:
-            peak2_pos.append(0)
+            # If no clear 2nd peak, use first path info as a baseline
+            peak2_pos.append(start_idx) 
             peak2_amp.append(0)
             
     return np.array(peak2_pos), np.array(peak2_amp)
@@ -44,37 +40,51 @@ def main():
     output_dir.mkdir(exist_ok=True)
 
     df = pd.read_csv(data_path)
-    X = df.drop(columns=["NLOS", "RANGE"])
-    y_class = df["NLOS"]
-    y_reg = df["RANGE"]
+    
+    # --- 1. TARGET GENERATION (The "Two Path" Fix) ---
+    # Path 1 Distance (Standard)
+    y_reg_p1 = df["RANGE"].values
+    
+    # Path 2 Distance Estimation (Based on Peak Position)
+    # Hint: Distance diff = (Peak Index Diff) * (Speed of light * Sample Time)
+    # 0.00468m is a common index-to-distance conversion for UWB CIR
+    cir_cols = [c for c in df.columns if c.startswith("CIR")]
+    p2_pos, p2_amp = extract_second_peak_features(df, cir_cols)
+    
+    index_diff = p2_pos - df['FP_IDX'].values
+    y_reg_p2 = y_reg_p1 + (index_diff * 0.00468) # Estimating Ground Truth for Path 2
+    
+    # Combine into a Multi-Output Target [N, 2]
+    y_reg_combined = np.column_stack([y_reg_p1, y_reg_p2])
 
-    X_train, X_test, y_train_class, y_test_class = train_test_split(
-        X, y_class, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_class
+    # Classification: Applying the "Golden Rule"
+    # State 0 (LOS-NLOS): If first path is LOS (0)
+    # State 1 (NLOS-NLOS): If first path is NLOS (1)
+    y_joint_class = df["NLOS"].values 
+
+    # --- 2. SPLIT DATA ---
+    X = df.drop(columns=["NLOS", "RANGE"])
+    X_train, X_test, y_train_class, y_test_class, y_train_reg, y_test_reg = train_test_split(
+        X, y_joint_class, y_reg_combined, 
+        test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_joint_class
     )
 
-    y_train_reg = y_reg.loc[X_train.index]
-    y_test_reg = y_reg.loc[X_test.index]
-
-    cir_cols = [c for c in X.columns if c.startswith("CIR")]
-    
-    # --- NEW: EXTRACT SECOND PATH FEATURES ---
-    print("Extracting Second Dominant Path features...")
+    # --- 3. FEATURE ENGINEERING ---
+    print("Engineering features for Path 2...")
+    # Re-extract for split sets
     X_train_p2_pos, X_train_p2_amp = extract_second_peak_features(X_train, cir_cols)
     X_test_p2_pos, X_test_p2_amp = extract_second_peak_features(X_test, cir_cols)
     
-    # Add them to the non-CIR columns list
     non_cir_cols = [c for c in X.columns if not c.startswith("CIR")]
-    
-    # --- SCALE NON-CIR (Including FP_IDX now and the new PEAK2 features) ---
-    scaler_non_cir = StandardScaler()
-    # We combine them into a temporary array for scaling
     X_train_struct = np.column_stack([X_train[non_cir_cols], X_train_p2_pos, X_train_p2_amp])
     X_test_struct = np.column_stack([X_test[non_cir_cols], X_test_p2_pos, X_test_p2_amp])
     
+    # Scaling
+    scaler_non_cir = StandardScaler()
     X_train_non_cir_scaled = scaler_non_cir.fit_transform(X_train_struct)
     X_test_non_cir_scaled = scaler_non_cir.transform(X_test_struct)
 
-    # --- PCA ON CIR ---
+    # PCA on CIR
     scaler_cir = StandardScaler()
     X_train_cir_scaled = scaler_cir.fit_transform(X_train[cir_cols])
     X_test_cir_scaled = scaler_cir.transform(X_test[cir_cols])
@@ -83,19 +93,20 @@ def main():
     X_train_cir_pca = pca.fit_transform(X_train_cir_scaled)
     X_test_cir_pca = pca.transform(X_test_cir_scaled)
 
-    # --- COMBINE EVERYTHING ---
+    # Final Stacking
     X_train_final = np.hstack([X_train_non_cir_scaled, X_train_cir_pca])
     X_test_final = np.hstack([X_test_non_cir_scaled, X_test_cir_pca])
     
-    # Save outputs (identical to your original saving logic)
+    # --- 4. SAVE OUTPUTS ---
     np.save(output_dir / "X_train.npy", X_train_final.astype(np.float32))
     np.save(output_dir / "X_test.npy", X_test_final.astype(np.float32))
-    np.save(output_dir / "y_train_class.npy", y_train_class.to_numpy())
-    np.save(output_dir / "y_test_class.npy", y_test_class.to_numpy())
-    np.save(output_dir / "y_train_reg.npy", y_train_reg.to_numpy())
-    np.save(output_dir / "y_test_reg.npy", y_test_reg.to_numpy())
+    np.save(output_dir / "y_train_class.npy", y_train_class)
+    np.save(output_dir / "y_test_class.npy", y_test_class)
+    np.save(output_dir / "y_train_reg.npy", y_train_reg) # Saved as (N, 2)
+    np.save(output_dir / "y_test_reg.npy", y_test_reg)   # Saved as (N, 2)
 
-    print(f"Preprocessing completed. Final Feature Count: {X_train_final.shape[1]}")
+    print(f"Done! X features: {X_train_final.shape[1]}")
+    print(f"Regression targets: {y_train_reg.shape[1]} (Path 1 and Path 2)")
 
 if __name__ == "__main__":
     main()
