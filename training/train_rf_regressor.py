@@ -1,151 +1,147 @@
 import numpy as np
-import pandas as pd
-from pathlib import Path
-import joblib
-
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
-import seaborn as sns
+import joblib
+from pathlib import Path
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-def evaluate(y_true, y_pred, label=""):
+
+def evaluate(y_true, y_pred, path_name):
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    mae = mean_absolute_error(y_true, y_pred)
-    r2 = r2_score(y_true, y_pred)
-    print(f"\n  [{label}]")
+    mae  = mean_absolute_error(y_true, y_pred)
+    r2   = r2_score(y_true, y_pred)
+    print(f"\n  Results for {path_name}:")
     print(f"  RMSE : {rmse:.4f} m")
     print(f"  MAE  : {mae:.4f} m")
     print(f"  R²   : {r2:.4f}")
     return rmse, mae, r2
 
-def plot_actual_vs_predicted(y_test, y_pred, rmse, plot_dir):
-    plt.figure(figsize=(8, 8))
-    plt.scatter(y_test, y_pred, alpha=0.3, color="blue", s=10)
-    lims = [min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())]
-    plt.plot(lims, lims, "r--", lw=2, label="Perfect prediction")
-    plt.xlabel("Actual Distance (m)")
-    plt.ylabel("Predicted Distance (m)")
-    plt.title(f"Actual vs Predicted (RMSE: {rmse:.3f} m)")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(plot_dir / "regression_performance.png", dpi=150)
-    plt.close()
-    print("  [Plot saved] regression_performance.png")
 
-def plot_feature_importance(model, n_features, plot_dir, top_n=10):
-    importances = model.feature_importances_
-    indices = np.argsort(importances)[::-1][:top_n]
-    
-    # Feature Map including our new "Injected" Classifier Label
-    # Since we added it as the LAST column, its index is (n_features - 1)
-    feature_map = {
-        0: "FP_IDX", 1: "STDEV_NOISE", 2: "PEAK2_POS", 3: "PEAK2_AMP",
-        (n_features - 1): "PRED_NLOS_STATE"  # Our injected feature!
-    }
-    
-    top_labels = [feature_map.get(i, f"PCA_{i-4}") for i in indices]
+def plot_two_paths(y_test, y_pred, plot_dir):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x=importances[indices], y=top_labels, hue=top_labels, palette="magma", legend=False)
-    plt.xlabel("Importance Score")
-    plt.title(f"Top {top_n} Feature Importances (Distance Prediction)")
+    # Path 1
+    ax1.scatter(y_test[:, 0], y_pred[:, 0], alpha=0.3, color='blue', s=5)
+    lims1 = [min(y_test[:, 0].min(), y_pred[:, 0].min()),
+             max(y_test[:, 0].max(), y_pred[:, 0].max())]
+    ax1.plot(lims1, lims1, 'r--', lw=2, label='Perfect prediction')
+    ax1.set_title("Path 1 (Direct): Actual vs Predicted")
+    ax1.set_xlabel("Actual Range (m)")
+    ax1.set_ylabel("Predicted Range (m)")
+    ax1.legend()
+
+    # Path 2
+    ax2.scatter(y_test[:, 1], y_pred[:, 1], alpha=0.3, color='green', s=5)
+    lims2 = [min(y_test[:, 1].min(), y_pred[:, 1].min()),
+             max(y_test[:, 1].max(), y_pred[:, 1].max())]
+    ax2.plot(lims2, lims2, 'r--', lw=2, label='Perfect prediction')
+    ax2.set_title("Path 2 (Reflection): Actual vs Predicted")
+    ax2.set_xlabel("Actual Range (m)")
+    ax2.set_ylabel("Predicted Range (m)")
+    ax2.legend()
+
     plt.tight_layout()
-    plt.savefig(plot_dir / "feature_importance_reg.png", dpi=150)
+    plt.savefig(plot_dir / "regression_two_paths.png", dpi=150)
     plt.close()
-    print("  [Plot saved] feature_importance_reg.png")
+    print("  [Plot saved] regression_two_paths.png")
+
 
 def plot_residuals(y_test, y_pred, plot_dir):
-    residuals = y_test - y_pred
-    plt.figure(figsize=(8, 5))
-    plt.scatter(y_pred, residuals, alpha=0.3, color="purple", s=10)
-    plt.axhline(0, color="red", linestyle="--", lw=2)
-    plt.xlabel("Predicted Distance (m)")
-    plt.ylabel("Residual (m)")
-    plt.title("Residuals vs Predicted (Error Distribution)")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+
+    for ax, col, color, label in [
+        (ax1, 0, 'blue',  'Path 1 (Direct)'),
+        (ax2, 1, 'green', 'Path 2 (Reflection)')
+    ]:
+        residuals = y_test[:, col] - y_pred[:, col]
+        ax.scatter(y_pred[:, col], residuals, alpha=0.3, color=color, s=5)
+        ax.axhline(0, color='red', linestyle='--', lw=2)
+        ax.set_title(f"Residuals: {label}")
+        ax.set_xlabel("Predicted Range (m)")
+        ax.set_ylabel("Residual (m)")
+
     plt.tight_layout()
-    plt.savefig(plot_dir / "residuals.png", dpi=150)
+    plt.savefig(plot_dir / "residuals_two_paths.png", dpi=150)
     plt.close()
-    print("  [Plot saved] residuals.png")
+    print("  [Plot saved] residuals_two_paths.png")
+
 
 def main():
     # ── Paths ──────────────────────────────────────────────────────────────
-    root = Path(__file__).resolve().parent.parent
-    data_dir = root / "data_prep_output"
-    plot_dir = root / "training" / "plots"
+    root      = Path(__file__).resolve().parent.parent
+    data_dir  = root / "data_prep_output"
+    plot_dir  = root / "training" / "plots"
     model_dir = root / "training" / "models"
     plot_dir.mkdir(parents=True, exist_ok=True)
     model_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Load and Augment data ──────────────────────────────────────────────
+    # ── Load data ──────────────────────────────────────────────────────────
     try:
-        # Load raw features and regression targets
-        X_train_raw = np.load(data_dir / "X_train.npy")
-        y_train_reg = np.load(data_dir / "y_train_reg.npy")
-        X_test_raw  = np.load(data_dir / "X_test.npy")
-        y_test_reg  = np.load(data_dir / "y_test_reg.npy")
-
-        # LOAD CLASSIFIER OUTPUTS
-        # For training, we use the ground truth class labels
-        # For testing, we MUST use the predictions from our Classifier
-        y_train_class = np.load(data_dir / "y_train_class.npy").reshape(-1, 1)
-        y_test_pred_class = np.load(data_dir / "y_test_pred_class.npy").reshape(-1, 1)
-
-        # INJECTION: Horizontal stack the classification labels as a new feature
-        X_train = np.hstack((X_train_raw, y_train_class))
-        X_test  = np.hstack((X_test_raw, y_test_pred_class))
-
+        X_train      = np.load(data_dir / "X_train.npy")
+        X_test       = np.load(data_dir / "X_test.npy")
+        y_train_reg  = np.load(data_dir / "y_train_reg.npy")   # shape (N, 2)
+        y_test_reg   = np.load(data_dir / "y_test_reg.npy")    # shape (N, 2)
     except FileNotFoundError as e:
-        print(f"Error: Required files missing in {data_dir}. Ensure Classifier ran first!")
-        print(f"Specific missing file: {e.filename}")
+        print(f"Error: Missing file → {e.filename}")
         return
 
-    print(f"Dataset Augmented: {X_train.shape[0]} samples.")
-    print(f"Features count increased to {X_train.shape[1]} (Classifier label injected).")
+    print(f"X_train : {X_train.shape}  |  y_train_reg : {y_train_reg.shape}")
+    print(f"X_test  : {X_test.shape}   |  y_test_reg  : {y_test_reg.shape}")
 
     # ── Train ──────────────────────────────────────────────────────────────
-    print("\n--- Training Robust Distance Regressor with NLOS Awareness ---")
-    
-    reg = RandomForestRegressor(
-        n_estimators=150, 
-        max_depth=8,        # Slightly higher depth to process the new logic
-        min_samples_leaf=15, 
-        random_state=42, 
-        n_jobs=-1, 
+    print("\n--- Training Multi-Output Regressor (Path 1 & Path 2) ---")
+    # MultiOutputRegressor trains one RF per output column (Path 1 and Path 2)
+    # Start with n_estimators=100 to verify it runs, then increase to 200
+    base_rf = RandomForestRegressor(
+        n_estimators=200,    # increase to 200 for final submission
+        max_depth=12,
+        min_samples_leaf=10,
+        random_state=42,
+        n_jobs=-1,
         verbose=1
     )
-    
+    reg = MultiOutputRegressor(base_rf)
     reg.fit(X_train, y_train_reg)
 
     # ── Evaluate ───────────────────────────────────────────────────────────
-    print("\n" + "=" * 45)
-    print("       TERMINAL REPORT: REGRESSION")
-    print("=" * 45)
+    print("\n" + "=" * 50)
+    print("      TERMINAL REPORT: TWO-PATH REGRESSION")
+    print("=" * 50)
 
-    y_pred_train = reg.predict(X_train)
-    y_pred_test  = reg.predict(X_test)
+    y_pred_train: np.ndarray = np.asarray(reg.predict(X_train))
+    y_pred_test: np.ndarray  = np.asarray(reg.predict(X_test))
 
-    train_rmse, _, _ = evaluate(y_train_reg, y_pred_train, label="Train Results")
-    test_rmse,  _, _ = evaluate(y_test_reg,  y_pred_test,  label="Test Results (Unseen Data)")
+    paths = ["Path 1 (Direct)", "Path 2 (Reflection)"]
 
-    overfit_gap = test_rmse - train_rmse
-    print(f"\n  Generalization Error (Test - Train RMSE): {overfit_gap:.4f} m")
+    print("\n  [Train Results]")
+    for i, name in enumerate(paths):
+        evaluate(y_train_reg[:, i], y_pred_train[:, i], name)
+
+    print("\n  [Test Results (Unseen Data)]")
+    test_rmses = []
+    for i, name in enumerate(paths):
+        rmse, _, _ = evaluate(y_test_reg[:, i], y_pred_test[:, i], name)
+        test_rmses.append(rmse)
+
+    print(f"\n  Average Test RMSE across both paths: {np.mean(test_rmses):.4f} m")
 
     # ── Plots ──────────────────────────────────────────────────────────────
     print("\n--- Generating Visualization Files ---")
-    plot_actual_vs_predicted(y_test_reg, y_pred_test, test_rmse, plot_dir)
-    plot_feature_importance(reg, X_train.shape[1], plot_dir)
+    plot_two_paths(y_test_reg, y_pred_test, plot_dir)
     plot_residuals(y_test_reg, y_pred_test, plot_dir)
 
     # ── Save model ─────────────────────────────────────────────────────────
-    model_path = model_dir / "rf_distance_regressor_augmented.joblib"
+    model_path = model_dir / "rf_multioutput_regressor.joblib"
     joblib.dump(reg, model_path)
-    print(f"\n[Saved] Augmented Model Weights → {model_path}")
+    print(f"\n[Saved] Model → {model_path}")
 
     # ── Save predictions ──────────────────────────────────────────────────
     np.save(data_dir / "y_test_pred_reg.npy", y_pred_test)
-    print("[Saved] Y_Pred → y_test_pred_reg.npy")
+    print("[Saved] Predictions → y_test_pred_reg.npy")
 
     print("\n[PROCESS COMPLETE]")
+
 
 if __name__ == "__main__":
     main()
