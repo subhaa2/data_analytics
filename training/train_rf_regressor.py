@@ -94,9 +94,9 @@ def main():
     # MultiOutputRegressor trains one RF per output column (Path 1 and Path 2)
     # Start with n_estimators=100 to verify it runs, then increase to 200
     base_rf = RandomForestRegressor(
-        n_estimators=200,    # increase to 200 for final submission
-        max_depth=12,
-        min_samples_leaf=10,
+        n_estimators=100,    # increase to 200 for final submission
+        max_depth=15,
+        min_samples_leaf=5,
         random_state=42,
         n_jobs=-1,
         verbose=1
