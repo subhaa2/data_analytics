@@ -22,6 +22,10 @@ def plot_two_paths(y_test, y_pred, plot_dir):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
     # Path 1
+    rmse1 = np.sqrt(mean_squared_error(y_test[:, 0], y_pred[:, 0]))
+    mae1  = mean_absolute_error(y_test[:, 0], y_pred[:, 0])
+    r2_1  = r2_score(y_test[:, 0], y_pred[:, 0])
+
     ax1.scatter(y_test[:, 0], y_pred[:, 0], alpha=0.3, color='blue', s=5)
     lims1 = [min(y_test[:, 0].min(), y_pred[:, 0].min()),
              max(y_test[:, 0].max(), y_pred[:, 0].max())]
@@ -30,8 +34,16 @@ def plot_two_paths(y_test, y_pred, plot_dir):
     ax1.set_xlabel("Actual Range (m)")
     ax1.set_ylabel("Predicted Range (m)")
     ax1.legend()
+    # add metrics box
+    ax1.text(0.04, 0.97, f"RMSE : {rmse1:.4f} m\nMAE  : {mae1:.4f} m\nR²     : {r2_1:.4f}",
+             transform=ax1.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace',
+             bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', edgecolor='#CCCCCC', alpha=0.9))
 
     # Path 2
+    rmse2 = np.sqrt(mean_squared_error(y_test[:, 1], y_pred[:, 1]))
+    mae2  = mean_absolute_error(y_test[:, 1], y_pred[:, 1])
+    r2_2  = r2_score(y_test[:, 1], y_pred[:, 1])
+
     ax2.scatter(y_test[:, 1], y_pred[:, 1], alpha=0.3, color='green', s=5)
     lims2 = [min(y_test[:, 1].min(), y_pred[:, 1].min()),
              max(y_test[:, 1].max(), y_pred[:, 1].max())]
@@ -40,12 +52,15 @@ def plot_two_paths(y_test, y_pred, plot_dir):
     ax2.set_xlabel("Actual Range (m)")
     ax2.set_ylabel("Predicted Range (m)")
     ax2.legend()
+    # add metrics box
+    ax2.text(0.04, 0.97, f"RMSE : {rmse2:.4f} m\nMAE  : {mae2:.4f} m\nR²     : {r2_2:.4f}",
+             transform=ax2.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace',
+             bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', edgecolor='#CCCCCC', alpha=0.9))
 
     plt.tight_layout()
-    plt.savefig(plot_dir / "regression_two_paths.png", dpi=150)
+    plt.savefig(plot_dir / "(v2)regression_two_paths.png", dpi=150)
     plt.close()
     print("  [Plot saved] regression_two_paths.png")
-
 
 def plot_residuals(y_test, y_pred, plot_dir):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
@@ -55,14 +70,20 @@ def plot_residuals(y_test, y_pred, plot_dir):
         (ax2, 1, 'green', 'Path 2 (Reflection)')
     ]:
         residuals = y_test[:, col] - y_pred[:, col]
+        rmse = np.sqrt(mean_squared_error(y_test[:, col], y_pred[:, col]))
+        mae = mean_absolute_error(y_test[:, col], y_pred[:, col])
         ax.scatter(y_pred[:, col], residuals, alpha=0.3, color=color, s=5)
         ax.axhline(0, color='red', linestyle='--', lw=2)
         ax.set_title(f"Residuals: {label}")
         ax.set_xlabel("Predicted Range (m)")
         ax.set_ylabel("Residual (m)")
+        # add metrics box
+        ax.text(0.04, 0.97, f"RMSE : {rmse:.4f} m\nMAE  : {mae:.4f} m",   # ADD
+                transform=ax.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='lightyellow', edgecolor='#CCCCCC', alpha=0.9))
 
     plt.tight_layout()
-    plt.savefig(plot_dir / "residuals_two_paths.png", dpi=150)
+    plt.savefig(plot_dir / "(v2)residuals_two_paths.png", dpi=150)
     plt.close()
     print("  [Plot saved] residuals_two_paths.png")
 

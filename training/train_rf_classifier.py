@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import seaborn as sns
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
@@ -105,10 +106,40 @@ def main():
     top_n = 10
     top_indices = indices[:top_n]
     top_names = [feature_map.get(i, f"PCA_{i-6}") for i in top_indices]
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x=importances[top_indices], y=top_names, palette="viridis", hue=top_names, legend=False)
-    plt.title("Top 10 Feature Importance (Gatekeeper)")
-    plt.savefig(plot_dir / "feature_importance.png")
+    # assign colors: blue for signal features (idx < 6), orange for PCA components (idx >= 6)
+    colors = ["#2196F3" if i < 6 else "#FF7043" for i in top_indices]
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111)
+    bars = ax.barh(y=range(top_n), width=importances[top_indices][::-1], color=colors[::-1], edgecolor="white", linewidth=0.6, height=0.65)
+    # x y axis lable
+    ax.set_yticks(range(top_n))
+    ax.set_yticklabels(top_names[::-1], fontsize=11)
+    ax.set_xlabel("Mean Decrease in Impurity", fontsize=11)
+    ax.set_title(
+        f"Top {top_n} Feature Importance (Gatekeeper)\n"
+        f"(Accuracy: {acc:.4f}  |  ROC AUC: {auc_val:.4f})",
+        fontsize=13, fontweight="bold", pad=5
+    )
+     # Value annotations for each bar
+    for bar, imp in zip(bars, importances[top_indices][::-1]):
+        ax.text(
+            bar.get_width() + 0.0005,
+            bar.get_y() + bar.get_height() / 2,
+            f"{imp:.4f}",
+            va="center", ha="left", fontsize=9, color="#333333"
+        )
+    # Legend
+    legend_handles = [
+        mpatches.Patch(color="#2196F3", label="Signal features"),
+        mpatches.Patch(color="#FF7043", label="PCA components"),
+    ]
+    ax.legend(handles=legend_handles, loc="lower right", fontsize=10, framealpha=0.9)
+ 
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_xlim(0, importances[top_indices].max() * 1.18)
+    plt.tight_layout()
+    plt.savefig(plot_dir / "(v2)feature_importance.png")
     plt.close()
 
     # Chart 3: ROC Curve
