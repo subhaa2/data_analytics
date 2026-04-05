@@ -110,3 +110,6 @@ Trains a Multi-Output Random Forest Regressor to predict direct-path (Path 1) an
 | RF Classifier | AUC | 0.8941 |
 | RF Regressor | Test RMSE — Path 1 (Direct) | 1.41 m |
 | RF Regressor | Test RMSE — Path 2 (Reflected) | 1.42 m |
+
+## Github link
+[Github link](https://github.com/subhaa2/data_analytics)
