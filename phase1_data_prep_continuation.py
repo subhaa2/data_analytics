@@ -112,8 +112,6 @@ def main():
     y_reg_p1 = df["RANGE"].values
     
     # Path 2 Distance Estimation (Based on Peak Position)
-    # Hint: Distance diff = (Peak Index Diff) * (Speed of light * Sample Time)
-    # 0.00468m is a common index-to-distance conversion for UWB CIR
     cir_cols = [c for c in df.columns if c.startswith("CIR")]
     p2_pos, p2_amp = extract_second_peak_features(df, cir_cols)
     
